@@ -45,18 +45,38 @@
 
   // GLOBAL ACTIONS
   window.applyBulkAction = async function(actionType) {
-    const selected = Array.from(document.querySelectorAll('.row-select:checked')).map(cb => cb.value);
-    if (!selected.length) return alert("Please select at least one voucher from the list.");
+    const selectedIds = Array.from(document.querySelectorAll('.row-select:checked')).map(cb => cb.value);
+    if (!selectedIds.length) return alert("Select vouchers first.");
 
     if (actionType === 'delete') {
-      if (!confirm(`Are you sure you want to delete ${selected.length} records?`)) return;
-      for (let id of selected) await remove(ref(db, `transactions/${id}`));
+      if (!confirm(`Permanently delete ${selectedIds.length} records?`)) return;
+      for (let id of selectedIds) await remove(ref(db, `transactions/${id}`));
+    } else if (actionType === 'csv') {
+      exportToCSV(selectedIds);
     } else {
-      // actionType is 'Paid' or 'Pending'
-      for (let id of selected) await update(ref(db, `transactions/${id}`), { status: actionType });
+      for (let id of selectedIds) await update(ref(db, `transactions/${id}`), { status: actionType });
     }
     document.getElementById("selectAll").checked = false;
   };
+
+  // CSV Export Logic
+  function exportToCSV(ids) {
+    const selectedData = window.transactions.filter(t => ids.includes(t.id));
+    let csvContent = "data:text/csv;charset=utf-8,Voucher No,Date,Company,Total,Status,Items\n";
+    
+    selectedData.forEach(t => {
+      const itemsStr = t.items.map(i => `${i.desc}(${i.amount})`).join(' | ');
+      csvContent += `${t.docNo},${t.date},"${t.company}",${t.total},${t.status},"${itemsStr}"\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `PettyCash_Export_${new Date().toLocaleDateString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 </script>
 
 <style>
@@ -65,20 +85,18 @@ body{font-family: 'Segoe UI', Arial, sans-serif; background:#f4f7f6; padding:20p
 h2{text-align:center; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;}
 input,select,button{padding:10px; margin:5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;}
 button{cursor:pointer; background: #2c3e50; color: white; border: none; font-weight: bold; transition: 0.2s;}
-button:hover{opacity: 0.9;}
 
-/* New Command Bar */
-.command-bar { background: #2c3e50; color: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; position: sticky; top: 10px; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-.command-bar b { margin-right: 10px; font-size: 16px; }
+/* Command Bar */
+.command-bar { background: #2c3e50; color: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; position: sticky; top: 10px; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-wrap: wrap; }
 .btn-danger { background: #e74c3c; }
 .btn-success { background: #27ae60; }
 .btn-warning { background: #f39c12; }
+.btn-info { background: #3498db; }
 
-/* Table Styles */
 #ledger { width: 100%; border-collapse: collapse; background: white; }
-#ledger th { background: #f8f9fa; position: sticky; top: 75px; z-index: 90; }
-#ledger th, #ledger td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
-.status-pill { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; color: white; display: inline-block; min-width: 60px; text-align: center; }
+#ledger th { background: #f8f9fa; position: sticky; top: 85px; z-index: 90; padding: 12px; border-bottom: 2px solid #dee2e6; }
+#ledger td { padding: 12px; border-bottom: 1px solid #eee; }
+.status-pill { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; color: white; display: inline-block; text-align: center; }
 .bg-red { background: #e74c3c; }
 .bg-green { background: #27ae60; }
 
@@ -119,15 +137,15 @@ button:hover{opacity: 0.9;}
         </table>
         <div class="live-total-box">Voucher Total: <span id="liveTotalDisplay">0.00</span> AED</div>
         <button onclick="addRow()" style="background:#7f8c8d">+ Add Line</button>
-        <button onclick="generatePreview()" style="background:#27ae60; width: 100%; margin-top: 10px; font-size: 16px;">Preview & Save to Cloud</button>
+        <button onclick="generatePreview()" style="background:#27ae60; width: 100%; margin-top: 10px; font-size: 16px;">Preview & Sync to Cloud</button>
     </div>
 
     <h3>Cloud Ledger</h3>
     <div class="command-bar">
-        <b>Bulk Actions:</b>
-        <button onclick="applyBulkAction('Paid')" class="btn-success">Mark Selected as Paid</button>
-        <button onclick="applyBulkAction('Pending')" class="btn-warning">Mark Selected as Pending</button>
-        <button onclick="applyBulkAction('delete')" class="btn-danger">Delete Selected</button>
+        <button onclick="applyBulkAction('Paid')" class="btn-success">Mark Paid</button>
+        <button onclick="applyBulkAction('Pending')" class="btn-warning">Mark Pending</button>
+        <button onclick="applyBulkAction('csv')" class="btn-info">Export to Excel (CSV)</button>
+        <button onclick="applyBulkAction('delete')" class="btn-danger">Delete</button>
         <div style="margin-left: auto; display: flex; align-items: center;">
             <input type="checkbox" id="selectAll" onclick="toggleAll(this)" style="transform: scale(1.3); margin-right: 8px;"> 
             <span>Select All</span>
@@ -139,8 +157,8 @@ button:hover{opacity: 0.9;}
 
 <div id="previewOverlay">
     <div style="text-align: center; margin-bottom: 20px;">
-        <button style="background:#27ae60; padding: 15px 40px; font-size: 18px;" onclick="finalizeAndPrint()">Confirm & Print Now</button>
-        <button style="background:#95a5a6; padding: 15px 40px; font-size: 18px;" onclick="closePreview()">Cancel / Edit</button>
+        <button style="background:#27ae60; padding: 15px 40px; font-size: 18px;" onclick="finalizeAndPrint()">Confirm & Print</button>
+        <button style="background:#95a5a6; padding: 15px 40px; font-size: 18px;" onclick="closePreview()">Cancel</button>
     </div>
     <div id="modalPrintArea" class="modal-content"></div>
 </div>
@@ -174,7 +192,7 @@ function generatePreview() {
         let a = parseFloat(r.querySelector(".i-amt").value) || 0;
         if(d) { items.push({desc: d, amount: a}); total += a; }
     });
-    if(!items.length) return alert("Please add at least one line item.");
+    if(!items.length) return alert("Add items first.");
 
     let coName = document.getElementById("company").value;
     let profile = companyProfiles[coName];
